@@ -22,6 +22,7 @@ app.use(express.json()); // Mengizinkan pembacaan format JSON
 
 // Definisikan Routes API
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/timbangan', require('./routes/timbangan'));
 
 // Jalankan Server
 const PORT = process.env.PORT || 5000;
