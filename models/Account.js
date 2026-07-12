@@ -9,8 +9,8 @@ const AccountSchema = new mongoose.Schema({
   createdAt: { type: String },
   updatedAt: { type: String }
 }, {
-  collection: 'account', // Memaksa Mongoose membaca collection 'account' persis seperti di Atlas
+  collection: 'akun', // Memaksa Mongoose membaca collection 'akun' persis seperti di Atlas
   versionKey: false // Menghilangkan field __v bawaan Mongoose jika tidak diperlukan
 });
 
-module.exports = mongoose.model('Account', AccountSchema);
+module.exports = mongoose.model('Account', AccountSchema, 'akun'); // Memastikan model ini menggunakan collection 'akun'
