@@ -51,14 +51,14 @@ const readSlaveData = async (slaveId) => {
     const weightValue = response.data[0] / 100; 
 
     // Logika disederhanakan: Langsung simpan jika di atas 40 kg
-    if (weightValue > 40) {
+    if (weightValue > 40 && weightValue < 52) {
         await Model.create({
             dateTime: getFormattedDate(),
             weight: weightValue
         });
         console.log(`[Slave ${slaveId}] DISIMPAN - Berat: ${weightValue} kg`);
     } else {
-        console.log(`[Slave ${slaveId}] Berat di bawah 40 kg, tidak disimpan: ${weightValue} kg`);
+        console.log(`[Slave ${slaveId}] Berat di luar rentang, tidak disimpan: ${weightValue} kg`);
     }
 
     // Update status koneksi menjadi 'running'
