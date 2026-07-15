@@ -1,18 +1,18 @@
 const mongoose = require('mongoose');
 
-// Skema dasar sesuai format JSON Anda
-const TimbanganSchema = new mongoose.Schema({
-  dateTime: { type: String, required: true },
-  weight: { type: Number, required: true },
-  groupId: { type: String, required: true }
-}, {
-  versionKey: false
-});
+// Schema (pastikan strict: false agar bisa menampung data timbangan & status)
+const timbanganSchema = new mongoose.Schema({}, { strict: false, versionKey: false });
 
-// Ekspor ke 4 collection spesifik
+// POLA PENCEGAHAN: Cek mongoose.models terlebih dahulu
+const Timbangan1 = mongoose.models.Timbangan1 || mongoose.model("Timbangan1", timbanganSchema, "timbangan1");
+const Timbangan2 = mongoose.models.Timbangan2 || mongoose.model("Timbangan2", timbanganSchema, "timbangan2");
+const Timbangan3 = mongoose.models.Timbangan3 || mongoose.model("Timbangan3", timbanganSchema, "timbangan3");
+const Timbangan4 = mongoose.models.Timbangan4 || mongoose.model("Timbangan4", timbanganSchema, "timbangan4");
+
+// Ekspor model agar bisa dipakai di tempat lain
 module.exports = {
-  Timbangan1: mongoose.model('Timbangan1', TimbanganSchema, 'timbangan1'),
-  Timbangan2: mongoose.model('Timbangan2', TimbanganSchema, 'timbangan2'),
-  Timbangan3: mongoose.model('Timbangan3', TimbanganSchema, 'timbangan3'),
-  Timbangan4: mongoose.model('Timbangan4', TimbanganSchema, 'timbangan4')
+  Timbangan1,
+  Timbangan2,
+  Timbangan3,
+  Timbangan4
 };

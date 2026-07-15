@@ -23,10 +23,15 @@ router.get('/dashboard-summary', async (req, res) => {
     const regexToday = new RegExp(todayStr, 'i');
 
     for (const model of models) {
-      totalSacks += await model.countDocuments();
-      dailySacks += await model.countDocuments({ dateTime: { $regex: regexToday } });
+      // Hanya hitung dokumen yang memiliki field 'weight' (Abaikan dokumen status)
+      totalSacks += await model.countDocuments({ weight: { $exists: true } });
+      dailySacks += await model.countDocuments({ dateTime: { $regex: regexToday }, weight: { $exists: true } });
       
-      const weightAgg = await model.aggregate([{ $group: { _id: null, total: { $sum: "$weight" } } }]);
+      const weightAgg = await model.aggregate([
+        { $match: { weight: { $exists: true } } }, // Filter dokumen status sebelum dihitung
+        { $group: { _id: null, total: { $sum: "$weight" } } }
+      ]);
+      
       if (weightAgg.length > 0) totalWeight += weightAgg[0].total;
     }
 
@@ -48,12 +53,13 @@ router.get('/semua-data', async (req, res) => {
   try {
     const limit = 200; // Ambil 200 data terakhir agar ringan
 
-    // Ambil data dari 4 collection secara bersamaan (paralel) untuk mempercepat respon
+    // Ambil data dari 4 collection secara bersamaan (paralel)
+    // Filter { weight: { $exists: true } } agar dokumen status tidak ikut masuk tabel
     const [dataT1, dataT2, dataT3, dataT4] = await Promise.all([
-      Timbangan1.find().sort({ _id: -1 }).limit(limit),
-      Timbangan2.find().sort({ _id: -1 }).limit(limit),
-      Timbangan3.find().sort({ _id: -1 }).limit(limit),
-      Timbangan4.find().sort({ _id: -1 }).limit(limit)
+      Timbangan1.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit),
+      Timbangan2.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit),
+      Timbangan3.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit),
+      Timbangan4.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit)
     ]);
 
     // Cari tahu collection mana yang datanya paling panjang untuk menentukan jumlah baris tabel
@@ -104,25 +110,23 @@ router.get('/detail/:id', async (req, res) => {
     const todayStr = new Date().toDateString();
     const regexToday = new RegExp(todayStr, 'i');
 
-    const totalSacks = await Model.countDocuments();
-    const todayRecords = await Model.find({ dateTime: { $regex: regexToday } }).sort({ _id: 1 });
+    // Filter dokumen status dari perhitungan karung
+    const totalSacks = await Model.countDocuments({ weight: { $exists: true } });
+    const todayRecords = await Model.find({ 
+      dateTime: { $regex: regexToday }, 
+      weight: { $exists: true } 
+    }).sort({ _id: 1 });
     
     const dailySacks = todayRecords.length;
     const totalKg = todayRecords.reduce((sum, item) => sum + item.weight, 0);
 
-    const latestRecord = await Model.findOne().sort({ _id: -1 });
-    
-    let realtime = 0;
-    let status = 'stopped';
+    // Ambil record berat terakhir untuk angka realtime di dashboard
+    const latestRecord = await Model.findOne({ weight: { $exists: true } }).sort({ _id: -1 });
+    let realtime = latestRecord ? latestRecord.weight : 0;
 
-    if (latestRecord) {
-      realtime = latestRecord.weight;
-      const latestTime = new Date(latestRecord.dateTime).getTime();
-      const now = new Date().getTime();
-      const diffMinutes = Math.floor((now - latestTime) / (1000 * 60));
-      
-      if (diffMinutes <= 15) status = 'running';
-    }
+    // Ambil dokumen status asli yang dikirim oleh Modbus Polling
+    const statusRecord = await Model.findOne({ status: { $exists: true } });
+    let status = statusRecord && statusRecord.status ? statusRecord.status : 'stopped';
 
     const chartLabels = todayRecords.map(r => {
       const d = new Date(r.dateTime);
@@ -132,7 +136,7 @@ router.get('/detail/:id', async (req, res) => {
     const chartData = todayRecords.map(r => parseFloat(r.weight.toFixed(2)));
 
     res.json({
-      status,
+      status, // Mengirimkan status 'connected' atau 'stopped' yang akurat
       realtime,
       totalKg: parseFloat(totalKg.toFixed(2)),
       totalSacks,
