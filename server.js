@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
+const { startPolling } = require("./modbusService");
 
 // Load env variables
 dotenv.config();
@@ -27,3 +28,4 @@ app.use('/api/timbangan', require('./routes/timbangan'));
 // Jalankan Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server berjalan di port ${PORT}`));
+startPolling(); // Mulai proses polling data dari Modbus
