@@ -72,28 +72,34 @@ const readSlaveData = async (slaveId) => {
 };
 
 // --- 5. FUNGSI POLLING SEKUENSIAL UTAMA ---
+// --- 5. FUNGSI POLLING SEKUENSIAL UTAMA ---
 const startPolling = async () => {
   try {
-    // Gunakan TcpRTUBuffered karena USR-TCP232-410S menjembatani TCP ke RS485 (RTU)
     await client.connectTcpRTUBuffered(USR_IP, { port: USR_PORT });
     client.setTimeout(1000); // Batas waktu tunggu per slave (1 detik)
     console.log("Terhubung ke USR Modbus Gateway!");
 
-    // Looping terus-menerus
-    setInterval(async () => {
-      // Loop berurutan (await digunakan di dalam for..of)
+    // Buat fungsi loop internal
+    const pollLoop = async () => {
+      // Loop berurutan untuk setiap slave
       for (const slaveId of SLAVES) {
         await readSlaveData(slaveId);
         
         // Beri jeda 100ms antar panggilan slave agar jalur RS485 tidak macet
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
-    }, 5000); // Ulangi seluruh proses penarikan setiap 5 detik
+      
+      // Setelah KEEMPAT slave selesai dieksekusi, baru jalankan timer 5 detik
+      // untuk memulai siklus berikutnya. Ini menjamin tidak akan ada tumpang tindih!
+      setTimeout(pollLoop, 3000); 
+    };
+
+    // Pemicu pertama untuk menjalankan loop
+    pollLoop();
 
   } catch (error) {
     console.error("Gagal terhubung ke Modbus Gateway USR:", error.message);
     
-    // Jika IP USR mati total, update semua status slave menjadi stopped
     for (const slaveId of SLAVES) {
       await updateStatus(slaveId, "stopped", "Koneksi gateway terputus");
     }
