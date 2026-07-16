@@ -72,39 +72,49 @@ const readSlaveData = async (slaveId) => {
 };
 
 // --- 5. FUNGSI POLLING SEKUENSIAL UTAMA ---
-// --- 5. FUNGSI POLLING SEKUENSIAL UTAMA ---
 const startPolling = async () => {
   try {
+    // Koneksi awal
     await client.connectTcpRTUBuffered(USR_IP, { port: USR_PORT });
-    client.setTimeout(1000); // Batas waktu tunggu per slave (1 detik)
+    client.setTimeout(1000); 
     console.log("Terhubung ke USR Modbus Gateway!");
 
-    // Buat fungsi loop internal
     const pollLoop = async () => {
-      // Loop berurutan untuk setiap slave
+      // LOGIKA BARU: Cek apakah TCP terputus sebelum mulai membaca
+      if (!client.isOpen) {
+        console.log("Koneksi TCP ke USR terputus. Mencoba menghubungkan ulang...");
+        try {
+          await client.connectTcpRTUBuffered(USR_IP, { port: USR_PORT });
+          console.log("Berhasil terhubung kembali ke USR!");
+        } catch (reconnectError) {
+          console.log("Gagal menghubungkan ulang:", reconnectError.message);
+          
+          // Update status MongoDB menjadi stopped
+          for (const slaveId of SLAVES) {
+            await updateStatus(slaveId, "stopped", "Koneksi gateway terputus");
+          }
+          
+          // Tunggu 5 detik lalu coba cycle loop lagi
+          setTimeout(pollLoop, 5000);
+          return; // Hentikan eksekusi kode di bawahnya untuk siklus ini
+        }
+      }
+
+      // Jika port terbuka, lakukan pembacaan normal
       for (const slaveId of SLAVES) {
-        await readSlaveData(slaveId);
-        
-        // Beri jeda 100ms antar panggilan slave agar jalur RS485 tidak macet
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await readSlaveData(slaveId); // Atau gunakan readSlave1(), readSlave2() jika Anda memisahkannya
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
       
-      // Setelah KEEMPAT slave selesai dieksekusi, baru jalankan timer 5 detik
-      // untuk memulai siklus berikutnya. Ini menjamin tidak akan ada tumpang tindih!
-      setTimeout(pollLoop, 3000); 
+      // Jadwalkan siklus berikutnya
+      setTimeout(pollLoop, 5000); 
     };
 
-    // Pemicu pertama untuk menjalankan loop
+    // Jalankan loop pertama kali
     pollLoop();
 
   } catch (error) {
-    console.error("Gagal terhubung ke Modbus Gateway USR:", error.message);
-    
-    for (const slaveId of SLAVES) {
-      await updateStatus(slaveId, "stopped", "Koneksi gateway terputus");
-    }
-    
-    // Coba hubungkan ulang setelah 10 detik
+    console.error("Gagal terhubung ke Modbus Gateway USR di awal:", error.message);
     setTimeout(startPolling, 10000);
   }
 };
