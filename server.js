@@ -10,7 +10,7 @@ const app = express();
 
 // konfigurasi agar fronted vercel bisa mengakses API backend
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:8080', 'https://timbanghub.vercel.app', 'https://vercel.com/syafrul-s-projects/timbanghub/4twgu64JXTW9fZsF4nQ2DbxNtvnW'],
+    origin: ['http://localhost:5000', 'http://localhost:5173', 'http://localhost:8080', 'https://timbanghub.vercel.app', 'https://vercel.com/syafrul-s-projects/timbanghub/4twgu64JXTW9fZsF4nQ2DbxNtvnW'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
 })); 
