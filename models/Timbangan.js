@@ -1,7 +1,11 @@
 const mongoose = require('mongoose');
 
-// Schema (pastikan strict: false agar bisa menampung data timbangan & status)
-const timbanganSchema = new mongoose.Schema({}, { strict: false, versionKey: false });
+// Schema dengan deklarasi index untuk performa super cepat
+const timbanganSchema = new mongoose.Schema({
+  weight: { type: Number, index: true },
+  status: { type: String, index: true },
+  dateTime: { type: String, index: true }
+}, { strict: false, versionKey: false });
 
 // POLA PENCEGAHAN: Cek mongoose.models terlebih dahulu
 const Timbangan1 = mongoose.models.Timbangan1 || mongoose.model("Timbangan1", timbanganSchema, "timbangan1");

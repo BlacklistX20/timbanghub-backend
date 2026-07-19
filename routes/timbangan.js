@@ -19,20 +19,28 @@ const formatDate = (dateString) => {
 router.get('/dashboard-summary', async (req, res) => {
   try {
     let totalWeight = 0, totalSacks = 0, dailySacks = 0;
-    const todayStr = new Date().toDateString(); 
-    const regexToday = new RegExp(todayStr, 'i');
-
-    for (const model of models) {
-      // Hanya hitung dokumen yang memiliki field 'weight' (Abaikan dokumen status)
-      totalSacks += await model.countDocuments({ weight: { $exists: true } });
-      dailySacks += await model.countDocuments({ dateTime: { $regex: regexToday }, weight: { $exists: true } });
-      
+    const today = new Date();
+    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+    const regexToday = new RegExp('^' + todayStr);
+    // Ambil agregasi dari 4 collection secara bersamaan (paralel) untuk performa 4x lebih cepat
+    const modelPromises = models.map(async (model) => {
+      const sacks = await model.countDocuments({ weight: { $exists: true } });
+      const daily = await model.countDocuments({ dateTime: { $regex: regexToday }, weight: { $exists: true } });
       const weightAgg = await model.aggregate([
-        { $match: { weight: { $exists: true } } }, // Filter dokumen status sebelum dihitung
+        { $match: { weight: { $exists: true } } },
         { $group: { _id: null, total: { $sum: "$weight" } } }
       ]);
+      const weight = weightAgg.length > 0 ? weightAgg[0].total : 0;
       
-      if (weightAgg.length > 0) totalWeight += weightAgg[0].total;
+      return { sacks, daily, weight };
+    });
+
+    const results = await Promise.all(modelPromises);
+
+    for (const res of results) {
+      totalSacks += res.sacks;
+      dailySacks += res.daily;
+      totalWeight += res.weight;
     }
 
     res.json({
@@ -107,8 +115,9 @@ router.get('/detail/:id', async (req, res) => {
 
     if (!Model) return res.status(400).json({ message: 'ID Timbangan tidak valid!' });
 
-    const todayStr = new Date().toDateString();
-    const regexToday = new RegExp(todayStr, 'i');
+    const today = new Date();
+    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+    const regexToday = new RegExp('^' + todayStr);
 
     // Filter dokumen status dari perhitungan karung
     const totalSacks = await Model.countDocuments({ weight: { $exists: true } });
