@@ -19,9 +19,6 @@ const REGISTER_ADDRESS = 4;     // Alamat register yang akan dibaca (sesuaikan d
 
 const client = new ModbusRTU();
 
-// Fungsi pembantu untuk memformat waktu sesuai permintaan
-const getFormattedDate = () => new Date().toString();
-
 // --- 3. FUNGSI UPDATE STATUS ---
 const updateStatus = async (slaveId, status, message) => {
   const Model = models[slaveId];
@@ -39,7 +36,27 @@ const updateStatus = async (slaveId, status, message) => {
   );
 };
 
-// --- 4. FUNGSI MENARIK DATA PER SLAVE ---
+// --- FUNGSI FORMAT WAKTU (Otomatis menyesuaikan Timezone) ---
+const getFormattedDate = () => {
+  // Memaksa format waktu ke Indonesia (id-ID) dan timezone WITA (Asia/Makassar)
+  // Ubah ke "Asia/Jakarta" jika ingin menggunakan WIB
+  const dateString = new Date().toLocaleString("id-ID", {
+    timeZone: "Asia/Makassar", 
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+  
+  // Format bawaan id-ID memisahkan jam dengan titik (contoh: 19/07/2026, 15.34.20)
+  // Kita ganti titik menjadi titik dua (:) dan hilangkan koma agar lebih standar
+  return dateString.replace(/\./g, ':').replace(',', '');
+};
+
+// --- FUNGSI MENARIK DATA PER SLAVE ---
 const readSlaveData = async (slaveId) => {
   const Model = models[slaveId];
 
@@ -50,10 +67,10 @@ const readSlaveData = async (slaveId) => {
     const response = await client.readInputRegisters(REGISTER_ADDRESS, 1);
     const weightValue = response.data[0] / 100; 
 
-    // Logika disederhanakan: Langsung simpan jika di atas 40 kg
+    // Logika disederhanakan: Langsung simpan jika di atas 40 kg dan di bawah 52 kg
     if (weightValue > 40 && weightValue < 52) {
         await Model.create({
-            dateTime: getFormattedDate(),
+            dateTime: getFormattedDate(), // <-- Sekarang memanggil format lokal
             weight: weightValue
         });
         console.log(`[Slave ${slaveId}] DISIMPAN - Berat: ${weightValue} kg`);
@@ -76,7 +93,7 @@ const startPolling = async () => {
   try {
     // Koneksi awal
     await client.connectTcpRTUBuffered(USR_IP, { port: USR_PORT });
-    client.setTimeout(1000); 
+    client.setTimeout(3000); 
     console.log("Terhubung ke USR Modbus Gateway!");
 
     const pollLoop = async () => {
@@ -103,7 +120,7 @@ const startPolling = async () => {
       // Jika port terbuka, lakukan pembacaan normal
       for (const slaveId of SLAVES) {
         await readSlaveData(slaveId); // Atau gunakan readSlave1(), readSlave2() jika Anda memisahkannya
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
       
       // Jadwalkan siklus berikutnya
