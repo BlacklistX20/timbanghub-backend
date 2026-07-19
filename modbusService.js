@@ -120,7 +120,7 @@ const startPolling = async () => {
       // Jika port terbuka, lakukan pembacaan normal
       for (const slaveId of SLAVES) {
         await readSlaveData(slaveId); // Atau gunakan readSlave1(), readSlave2() jika Anda memisahkannya
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
       
       // Jadwalkan siklus berikutnya
