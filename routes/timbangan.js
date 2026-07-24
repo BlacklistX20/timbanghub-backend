@@ -4,15 +4,6 @@ const { Timbangan1, Timbangan2, Timbangan3, Timbangan4 } = require('../models/Ti
 
 const models = [Timbangan1, Timbangan2, Timbangan3, Timbangan4];
 
-// Fungsi Bantuan: Mengubah format string tanggal panjang menjadi DD/MM/YYYY HH:MM:SS
-const formatDate = (dateString) => {
-  if (!dateString) return '-';
-  const d = new Date(dateString);
-  if (isNaN(d.getTime())) return '-';
-  
-  return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
-};
-
 // ====================================================================
 // 1. API: RINGKASAN DASHBOARD UTAMA
 // ====================================================================
@@ -22,7 +13,8 @@ router.get('/dashboard-summary', async (req, res) => {
     const today = new Date();
     const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
     const regexToday = new RegExp('^' + todayStr);
-    // Ambil agregasi dari 4 collection secara bersamaan (paralel) untuk performa 4x lebih cepat
+    
+    // Ambil agregasi dari 4 collection secara bersamaan (paralel)
     const modelPromises = models.map(async (model) => {
       const sacks = await model.countDocuments({ weight: { $exists: true } });
       const daily = await model.countDocuments({ dateTime: { $regex: regexToday }, weight: { $exists: true } });
@@ -55,14 +47,13 @@ router.get('/dashboard-summary', async (req, res) => {
 });
 
 // ====================================================================
-// 2. API: DATA TABEL KESELURUHAN (Independen, Abaikan GroupId)
+// 2. API: DATA TABEL KESELURUHAN (Terurut dari paling baru)
 // ====================================================================
 router.get('/semua-data', async (req, res) => {
   try {
-    const limit = 200; // Ambil 200 data terakhir agar ringan
+    const limit = 200; 
 
-    // Ambil data dari 4 collection secara bersamaan (paralel)
-    // Filter { weight: { $exists: true } } agar dokumen status tidak ikut masuk tabel
+    // sort({ _id: -1 }) adalah cara paling valid untuk mengurutkan dari yang terbaru
     const [dataT1, dataT2, dataT3, dataT4] = await Promise.all([
       Timbangan1.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit),
       Timbangan2.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit),
@@ -70,28 +61,27 @@ router.get('/semua-data', async (req, res) => {
       Timbangan4.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit)
     ]);
 
-    // Cari tahu collection mana yang datanya paling panjang untuk menentukan jumlah baris tabel
     const maxRows = Math.max(dataT1.length, dataT2.length, dataT3.length, dataT4.length);
     const finalData = [];
 
-    // Susun data baris demi baris menyamping
+    // Kita langsung menggunakan properti dateTime yang sudah berformat rapi dari Modbus
     for (let i = 0; i < maxRows; i++) {
       finalData.push({
         id: i + 1,
         t1: {
-          dt: dataT1[i] ? formatDate(dataT1[i].dateTime) : '-',
+          dt: dataT1[i] ? dataT1[i].dateTime : '-',
           w: dataT1[i] ? dataT1[i].weight : 0
         },
         t2: {
-          dt: dataT2[i] ? formatDate(dataT2[i].dateTime) : '-',
+          dt: dataT2[i] ? dataT2[i].dateTime : '-',
           w: dataT2[i] ? dataT2[i].weight : 0
         },
         t3: {
-          dt: dataT3[i] ? formatDate(dataT3[i].dateTime) : '-',
+          dt: dataT3[i] ? dataT3[i].dateTime : '-',
           w: dataT3[i] ? dataT3[i].weight : 0
         },
         t4: {
-          dt: dataT4[i] ? formatDate(dataT4[i].dateTime) : '-',
+          dt: dataT4[i] ? dataT4[i].dateTime : '-',
           w: dataT4[i] ? dataT4[i].weight : 0
         }
       });
@@ -119,33 +109,37 @@ router.get('/detail/:id', async (req, res) => {
     const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
     const regexToday = new RegExp('^' + todayStr);
 
-    // Filter dokumen status dari perhitungan karung
     const totalSacks = await Model.countDocuments({ weight: { $exists: true } });
     const todayRecords = await Model.find({ 
       dateTime: { $regex: regexToday }, 
       weight: { $exists: true } 
-    }).sort({ _id: 1 });
+    }).sort({ _id: 1 }); // Diurutkan maju untuk grafik (dari pagi ke malam)
     
     const dailySacks = todayRecords.length;
     const totalKg = todayRecords.reduce((sum, item) => sum + item.weight, 0);
 
-    // Ambil record berat terakhir untuk angka realtime di dashboard
     const latestRecord = await Model.findOne({ weight: { $exists: true } }).sort({ _id: -1 });
     let realtime = latestRecord ? latestRecord.weight : 0;
 
-    // Ambil dokumen status asli yang dikirim oleh Modbus Polling
     const statusRecord = await Model.findOne({ status: { $exists: true } });
     let status = statusRecord && statusRecord.status ? statusRecord.status : 'stopped';
 
+    // PERBAIKAN: Parsing jam secara manual dari string "DD/MM/YYYY HH:MM:SS"
     const chartLabels = todayRecords.map(r => {
-      const d = new Date(r.dateTime);
-      return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+      if (r.dateTime) {
+        const timePart = r.dateTime.split(' ')[1]; // Mengambil bagian "HH:MM:SS"
+        if (timePart) {
+          const timeSplit = timePart.split(':');
+          return `${timeSplit[0]}:${timeSplit[1]}`; // Mengembalikan "HH:MM"
+        }
+      }
+      return '00:00';
     });
     
     const chartData = todayRecords.map(r => parseFloat(r.weight.toFixed(2)));
 
     res.json({
-      status, // Mengirimkan status 'connected' atau 'stopped' yang akurat
+      status, 
       realtime,
       totalKg: parseFloat(totalKg.toFixed(2)),
       totalSacks,
