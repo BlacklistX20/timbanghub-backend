@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const AccountSchema = new mongoose.Schema({
-  email: { type: String, required: true },
+  email: { type: String },
   username: { type: String, required: true },
   passwordHash: { type: String, required: true }, // Disesuaikan dengan nama field Anda
   role: { type: String, required: true },
