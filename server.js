@@ -18,7 +18,8 @@ app.use(cors({
 app.use(express.json()); // Mengizinkan pembacaan format JSON
 
 // Definisikan Routes API
-app.use('/api/auth', require('./routes/auth'));
+app.use('/api/auth', require('./routes/auth'));;
+app.use('/api/account', require('./routes/account'));
 app.use('/api/timbangan', require('./routes/timbangan'));
 
 // Hubungkan ke MongoDB dan Jalankan Server
