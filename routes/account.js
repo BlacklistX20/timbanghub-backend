@@ -21,9 +21,9 @@ const verifyAdmin = (req, res, next) => {
     // Verifikasi token menggunakan rahasia yang sama dengan saat login
     const decoded = jwt.verify(tokenClean, process.env.JWT_SECRET);
     
-    // Validasi apakah user yang sedang login adalah admin
-    if (decoded.role !== 'admin') {
-      return res.status(403).json({ message: 'Akses ditolak. Hanya Admin yang dapat mendaftarkan akun baru!' });
+    // Validasi apakah user yang sedang login adalah admin dan dev
+    if (decoded.role !== 'admin' && decoded.role !== 'dev') {
+      return res.status(403).json({ message: 'Akses ditolak. Hanya Admin dan Developer yang diizinkan!' });
     }
     
     req.user = decoded;
@@ -102,38 +102,61 @@ router.get('/users', verifyAdmin, async (req, res) => {
 });
 
 // ====================================================================
-// API 3: EDIT DATA AKUN
+// API 3: EDIT DATA AKUN (DIPERBARUI)
 // ====================================================================
 router.put('/edit/:id', verifyAdmin, async (req, res) => {
   const { id } = req.params;
   const { email, username, role, password } = req.body;
 
   try {
-    const user = await Account.findById(id);
-    if (!user) {
-      return res.status(404).json({ message: 'Akun tidak ditemukan!' });
-    }
+    // 1. Siapkan objek data yang akan ditimpa ($set)
+    const updateData = {
+      updatedAt: new Date().toString()
+    };
 
-    // Perbarui data dasar jika diisi dari frontend
-    if (username) user.username = username;
-    if (role) user.role = role;
-    if (email !== undefined) user.email = email; // Mengizinkan email dikosongkan ("")
+    if (username) updateData.username = username;
+    if (role) updateData.role = role;
 
-    // Jika admin mengetikkan password baru, maka hash ulang password tersebut
+    // 2. Tangani password: Hash ulang HANYA jika form password diisi
     if (password && password.trim() !== "") {
       const salt = await bcrypt.genSalt(10);
-      user.passwordHash = await bcrypt.hash(password, salt);
+      updateData.passwordHash = await bcrypt.hash(password, salt);
     }
 
-    // Perbarui waktu update
-    user.updatedAt = new Date().toString();
+    // 3. Siapkan query eksekusi
+    const query = { $set: updateData };
 
-    await user.save();
+    // 4. Tangani Email: 
+    // Jika email dihapus/dikosongkan, hapus field tersebut dari database menggunakan $unset
+    if (email === "" || email === null) {
+      query.$unset = { email: 1 };
+    } else if (email !== undefined) {
+      updateData.email = email;
+    }
+
+    // 5. Eksekusi Update ke MongoDB secara langsung (Lebih aman dari .save())
+    const updatedUser = await Account.findByIdAndUpdate(id, query, { new: true });
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'Akun tidak ditemukan di database!' });
+    }
 
     res.json({ message: 'Data akun berhasil diperbarui!' });
+
   } catch (err) {
     console.error("Error edit akun:", err.message);
-    res.status(500).json({ message: 'Terjadi kesalahan internal saat mengedit akun.', error: err.message });
+    
+    // TANGKAP ERROR DUPLIKAT: Jika MongoDB menolak karena Username/Email sudah terpakai
+    if (err.code === 11000) {
+      return res.status(400).json({ 
+        message: 'Username atau Email sudah terdaftar pada akun lain. Gunakan yang berbeda.' 
+      });
+    }
+
+    res.status(500).json({ 
+      message: 'Terjadi kesalahan internal saat mengedit akun.', 
+      error: err.message 
+    });
   }
 });
 
