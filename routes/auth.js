@@ -2,15 +2,15 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const Account = require('../models/Account');
+const { User } = require('../models');
 
 // API LOGIN
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
   try {
-    // 1. Cari user di collection 'account' berdasarkan username
-    const user = await Account.findOne({ username });
+    // 1. Cari user di tabel 'users' berdasarkan username
+    const user = await User.findOne({ where: { username } });
 
     // 2. Jika user tidak ditemukan
     if (!user) {
@@ -23,16 +23,17 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Username atau Password salah!' });
     }
 
-    // 4. Update waktu lastLogin dengan zona waktu Indonesia
-    const now = new Date().toString(); 
-    user.lastLogin = now;
+    // 4. Update waktu lastLogin
+    // Gunakan objek Date asli (bukan .toString()), supaya Sequelize menyimpannya
+    // dengan benar sebagai kolom DATETIME di MySQL
+    user.lastLogin = new Date();
     await user.save();
 
     // 5. Buat JWT Token dengan menyertakan role
-    const payload = { 
-      userId: user._id, 
+    const payload = {
+      userId: user.id,
       username: user.username,
-      role: user.role 
+      role: user.role
     };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
 

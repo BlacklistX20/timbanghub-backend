@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const connectDB = require('./config/db');
+const { testConnection } = require('./config/db');
 
 // Load env variables
 dotenv.config();
@@ -26,8 +26,8 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/account', require('./routes/account'));
 app.use('/api/timbangan', require('./routes/timbangan'));
 
-// Hubungkan ke MongoDB dan Jalankan Server
-connectDB().then(() => {
+// Hubungkan ke MySQL dan Jalankan Server
+testConnection().then(() => {
     // Jalankan Server
     const PORT = process.env.PORT || 5000; // Tambahkan fallback port 5000 untuk amannya
     app.listen(PORT, () => {
