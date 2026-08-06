@@ -1,41 +1,39 @@
 const express = require('express');
 const router = express.Router();
-const { Timbangan1, Timbangan2, Timbangan3, Timbangan4 } = require('../models/Timbangan');
+const { Op } = require('sequelize');
+const { ScaleReading, ScaleStatus } = require('../models');
+const { requireAuth } = require('../middleware/auth');
 
-const models = [Timbangan1, Timbangan2, Timbangan3, Timbangan4];
+// Endpoint GET (dashboard-summary, semua-data, detail/:id) sengaja dibiarkan
+// publik/tanpa token - DashboardView.vue memanggilnya tanpa Authorization header.
+// Hanya endpoint yang MENGUBAH data (edit/delete) yang dikunci di bawah.
+
+// Helper: rentang waktu "hari ini" (00:00:00 s/d sebelum 00:00:00 besok)
+// berdasarkan waktu lokal server (pastikan TZ server = Asia/Makassar)
+function getTodayRange() {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return { startOfToday, startOfTomorrow };
+}
 
 // ====================================================================
 // 1. API: RINGKASAN DASHBOARD UTAMA
 // ====================================================================
 router.get('/dashboard-summary', async (req, res) => {
   try {
-    let totalWeight = 0, totalSacks = 0, dailySacks = 0;
-    const today = new Date();
-    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-    const regexToday = new RegExp('^' + todayStr);
-    
-    const modelPromises = models.map(async (model) => {
-      const sacks = await model.countDocuments({ weight: { $exists: true } });
-      const daily = await model.countDocuments({ dateTime: { $regex: regexToday }, weight: { $exists: true } });
-      const weightAgg = await model.aggregate([
-        { $match: { weight: { $exists: true } } },
-        { $group: { _id: null, total: { $sum: "$weight" } } }
-      ]);
-      const weight = weightAgg.length > 0 ? weightAgg[0].total : 0;
-      
-      return { sacks, daily, weight };
+    const { startOfToday, startOfTomorrow } = getTodayRange();
+
+    // Semua baris di scale_readings sudah pasti data berat,
+    // jadi tidak perlu lagi filter { weight: { $exists: true } } seperti versi Mongo
+    const totalSacks = await ScaleReading.count();
+    const dailySacks = await ScaleReading.count({
+      where: { recordedAt: { [Op.gte]: startOfToday, [Op.lt]: startOfTomorrow } },
     });
-
-    const results = await Promise.all(modelPromises);
-
-    for (const res of results) {
-      totalSacks += res.sacks;
-      dailySacks += res.daily;
-      totalWeight += res.weight;
-    }
+    const totalWeightResult = await ScaleReading.sum('weight');
 
     res.json({
-      totalWeight: parseFloat(totalWeight.toFixed(2)),
+      totalWeight: parseFloat((totalWeightResult || 0).toFixed(2)),
       totalSacks,
       dailySacks
     });
@@ -50,42 +48,36 @@ router.get('/dashboard-summary', async (req, res) => {
 // ====================================================================
 router.get('/semua-data', async (req, res) => {
   try {
-    const limit = 200; 
+    const limit = 200;
 
-    const [dataT1, dataT2, dataT3, dataT4] = await Promise.all([
-      Timbangan1.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit),
-      Timbangan2.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit),
-      Timbangan3.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit),
-      Timbangan4.find({ weight: { $exists: true } }).sort({ _id: -1 }).limit(limit)
-    ]);
+    const [dataT1, dataT2, dataT3, dataT4] = await Promise.all(
+      [1, 2, 3, 4].map((scaleId) =>
+        ScaleReading.findAll({
+          where: { scaleId },
+          order: [['id', 'DESC']],
+          limit,
+        })
+      )
+    );
 
     const maxRows = Math.max(dataT1.length, dataT2.length, dataT3.length, dataT4.length);
     const finalData = [];
 
+    // Catatan: kolom weight (DECIMAL) dikembalikan mysql2 sebagai string,
+    // makanya di-Number()-kan supaya tetap angka seperti versi Mongo sebelumnya
+    const mapRow = (record) => ({
+      _id: record ? record.id : null, // key '_id' dipertahankan agar frontend tidak perlu diubah
+      dt: record ? record.recordedAt : '-',
+      w: record ? Number(record.weight) : 0
+    });
+
     for (let i = 0; i < maxRows; i++) {
       finalData.push({
         id: i + 1,
-        // _id disertakan agar frontend tahu data mana yang mau diubah/dihapus
-        t1: {
-          _id: dataT1[i] ? dataT1[i]._id : null,
-          dt: dataT1[i] ? dataT1[i].dateTime : '-',
-          w: dataT1[i] ? dataT1[i].weight : 0
-        },
-        t2: {
-          _id: dataT2[i] ? dataT2[i]._id : null,
-          dt: dataT2[i] ? dataT2[i].dateTime : '-',
-          w: dataT2[i] ? dataT2[i].weight : 0
-        },
-        t3: {
-          _id: dataT3[i] ? dataT3[i]._id : null,
-          dt: dataT3[i] ? dataT3[i].dateTime : '-',
-          w: dataT3[i] ? dataT3[i].weight : 0
-        },
-        t4: {
-          _id: dataT4[i] ? dataT4[i]._id : null,
-          dt: dataT4[i] ? dataT4[i].dateTime : '-',
-          w: dataT4[i] ? dataT4[i].weight : 0
-        }
+        t1: mapRow(dataT1[i]),
+        t2: mapRow(dataT2[i]),
+        t3: mapRow(dataT3[i]),
+        t4: mapRow(dataT4[i])
       });
     }
 
@@ -101,46 +93,47 @@ router.get('/semua-data', async (req, res) => {
 // ====================================================================
 router.get('/detail/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const modelIndex = parseInt(id) - 1;
-    const Model = models[modelIndex];
+    const scaleId = parseInt(req.params.id);
 
-    if (!Model) return res.status(400).json({ message: 'ID Timbangan tidak valid!' });
+    if (!scaleId || scaleId < 1 || scaleId > 4) {
+      return res.status(400).json({ message: 'ID Timbangan tidak valid!' });
+    }
 
-    const today = new Date();
-    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-    const regexToday = new RegExp('^' + todayStr);
+    const { startOfToday, startOfTomorrow } = getTodayRange();
 
-    const totalSacks = await Model.countDocuments({ weight: { $exists: true } });
-    const todayRecords = await Model.find({ 
-      dateTime: { $regex: regexToday }, 
-      weight: { $exists: true } 
-    }).sort({ _id: 1 }); 
-    
-    const dailySacks = todayRecords.length;
-    const totalKg = todayRecords.reduce((sum, item) => sum + item.weight, 0);
+    const totalSacks = await ScaleReading.count({ where: { scaleId } });
 
-    const latestRecord = await Model.findOne({ weight: { $exists: true } }).sort({ _id: -1 });
-    let realtime = latestRecord ? latestRecord.weight : 0;
-
-    const statusRecord = await Model.findOne({ status: { $exists: true } });
-    let status = statusRecord && statusRecord.status ? statusRecord.status : 'stopped';
-
-    const chartLabels = todayRecords.map(r => {
-      if (r.dateTime) {
-        const timePart = r.dateTime.split(' ')[1]; 
-        if (timePart) {
-          const timeSplit = timePart.split(':');
-          return `${timeSplit[0]}:${timeSplit[1]}`; 
-        }
-      }
-      return '00:00';
+    const todayRecords = await ScaleReading.findAll({
+      where: {
+        scaleId,
+        recordedAt: { [Op.gte]: startOfToday, [Op.lt]: startOfTomorrow }
+      },
+      order: [['recordedAt', 'ASC']]
     });
-    
-    const chartData = todayRecords.map(r => parseFloat(r.weight.toFixed(2)));
+
+    const dailySacks = todayRecords.length;
+    const totalKg = todayRecords.reduce((sum, item) => sum + Number(item.weight), 0);
+
+    const latestRecord = await ScaleReading.findOne({
+      where: { scaleId },
+      order: [['recordedAt', 'DESC']]
+    });
+    const realtime = latestRecord ? Number(latestRecord.weight) : 0;
+
+    // Status sekarang diambil dari tabel scale_status (1 baris tetap per timbangan)
+    const statusRecord = await ScaleStatus.findOne({ where: { scaleId } });
+    const status = statusRecord ? statusRecord.status : 'unknown';
+
+    const chartLabels = todayRecords.map((r) => {
+      const hh = String(r.recordedAt.getHours()).padStart(2, '0');
+      const mm = String(r.recordedAt.getMinutes()).padStart(2, '0');
+      return `${hh}:${mm}`;
+    });
+
+    const chartData = todayRecords.map((r) => parseFloat(Number(r.weight).toFixed(2)));
 
     res.json({
-      status, 
+      status,
       realtime,
       totalKg: parseFloat(totalKg.toFixed(2)),
       totalSacks,
@@ -157,30 +150,30 @@ router.get('/detail/:id', async (req, res) => {
 // ====================================================================
 // 4. API: EDIT DATA TIMBANGAN (Spesifik 1 Mesin & 1 Data)
 // ====================================================================
-router.put('/edit/:scaleId/:docId', async (req, res) => {
+router.put('/edit/:scaleId/:docId', requireAuth(['operator', 'admin', 'dev']), async (req, res) => {
   try {
-    const scaleIndex = parseInt(req.params.scaleId) - 1;
-    const Model = models[scaleIndex];
+    const scaleId = parseInt(req.params.scaleId);
 
-    if (!Model) return res.status(400).json({ message: 'Mesin timbangan tidak valid' });
+    if (!scaleId || scaleId < 1 || scaleId > 4) {
+      return res.status(400).json({ message: 'Mesin timbangan tidak valid' });
+    }
 
     const { weight, dateTime } = req.body;
 
-    const updateData = {};
-    if (weight !== undefined) updateData.weight = Number(weight);
-    if (dateTime !== undefined) updateData.dateTime = dateTime;
+    // scaleId disertakan di WHERE supaya tidak bisa edit data milik timbangan lain
+    const record = await ScaleReading.findOne({ where: { id: req.params.docId, scaleId } });
 
-    const updatedRecord = await Model.findByIdAndUpdate(
-      req.params.docId, 
-      updateData, 
-      { new: true } 
-    );
-
-    if (!updatedRecord) {
+    if (!record) {
       return res.status(404).json({ message: 'Data tidak ditemukan di database' });
     }
 
-    res.json({ message: 'Data timbangan berhasil diperbarui!', data: updatedRecord });
+    if (weight !== undefined) record.weight = Number(weight);
+    // dateTime WAJIB dikirim dalam format ISO (contoh: "2026-08-04T10:30:00")
+    if (dateTime !== undefined) record.recordedAt = new Date(dateTime);
+
+    await record.save();
+
+    res.json({ message: 'Data timbangan berhasil diperbarui!', data: record });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Terjadi kesalahan saat mengupdate data', error: err.message });
@@ -190,17 +183,18 @@ router.put('/edit/:scaleId/:docId', async (req, res) => {
 // ====================================================================
 // 5. API: HAPUS DATA TIMBANGAN (Spesifik 1 Mesin & 1 Data)
 // ====================================================================
-router.delete('/delete/:scaleId/:docId', async (req, res) => {
+router.delete('/delete/:scaleId/:docId', requireAuth(['operator', 'admin', 'dev']), async (req, res) => {
   try {
-    const scaleIndex = parseInt(req.params.scaleId) - 1;
-    const Model = models[scaleIndex];
+    const scaleId = parseInt(req.params.scaleId);
 
-    if (!Model) return res.status(400).json({ message: 'Mesin timbangan tidak valid' });
+    if (!scaleId || scaleId < 1 || scaleId > 4) {
+      return res.status(400).json({ message: 'Mesin timbangan tidak valid' });
+    }
 
-    // Hapus data spesifik berdasarkan ObjectID bawaan MongoDB
-    const deletedRecord = await Model.findByIdAndDelete(req.params.docId);
+    // scaleId disertakan di WHERE supaya tidak bisa hapus data milik timbangan lain
+    const deletedCount = await ScaleReading.destroy({ where: { id: req.params.docId, scaleId } });
 
-    if (!deletedRecord) {
+    if (deletedCount === 0) {
       return res.status(404).json({ message: 'Data tidak ditemukan atau sudah dihapus sebelumnya' });
     }
 
