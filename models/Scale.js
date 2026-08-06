@@ -22,12 +22,6 @@ const Scale = sequelize.define('Scale', {
     type: DataTypes.STRING(150),
     allowNull: true,
   },
-  saveIntervalSeconds: {
-    type: DataTypes.INTEGER.UNSIGNED,
-    allowNull: false,
-    defaultValue: 5,
-    comment: 'Interval penyimpanan berat (detik), berbeda per timbangan',
-  },
   isActive: {
     type: DataTypes.BOOLEAN,
     allowNull: false,

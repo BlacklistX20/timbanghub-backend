@@ -21,7 +21,6 @@ CREATE TABLE scales (
   code VARCHAR(50) NOT NULL UNIQUE COMMENT 'Kode unik timbangan, contoh: TIMBANGAN-01',
   name VARCHAR(100) NOT NULL COMMENT 'Nama/label timbangan',
   location VARCHAR(150) NULL COMMENT 'Lokasi fisik timbangan (opsional)',
-  save_interval_seconds INT UNSIGNED NOT NULL DEFAULT 5 COMMENT 'Interval penyimpanan berat (detik), berbeda per timbangan',
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -33,6 +32,7 @@ CREATE TABLE scales (
 -- -------------------------------------------------
 CREATE TABLE scale_readings (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  sync_id CHAR(36) NOT NULL UNIQUE COMMENT 'UUID dibuat di sisi aplikasi (bukan auto_increment) - kunci idempoten saat sinkronisasi database lokal ke cloud, supaya retry tidak menghasilkan data ganda',
   scale_id INT UNSIGNED NOT NULL,
   weight DECIMAL(12,3) NOT NULL COMMENT 'Berat hasil timbang',
   recorded_at DATETIME NOT NULL COMMENT 'Waktu berat dibaca dari alat',
@@ -85,13 +85,13 @@ CREATE TABLE users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -------------------------------------------------
--- Seed data: 4 timbangan dengan interval penyimpanan berbeda
+-- Seed data: 4 timbangan
 -- -------------------------------------------------
-INSERT INTO scales (code, name, save_interval_seconds) VALUES
-('TIMBANGAN-01', 'Timbangan 1', 1),
-('TIMBANGAN-02', 'Timbangan 2', 1),
-('TIMBANGAN-03', 'Timbangan 3', 1),
-('TIMBANGAN-04', 'Timbangan 4', 1);
+INSERT INTO scales (id, code, name) VALUES
+(1, 'TIMBANGAN-01', 'Timbangan 1'),
+(2, 'TIMBANGAN-02', 'Timbangan 2'),
+(3, 'TIMBANGAN-03', 'Timbangan 3'),
+(4, 'TIMBANGAN-04', 'Timbangan 4');
 
 INSERT INTO scale_status (scale_id, status)
 SELECT id, 'unknown' FROM scales;
