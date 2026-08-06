@@ -1,43 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { User } = require('../models');
-
-// ====================================================================
-// MIDDLEWARE: Cek Token & Role Admin
-// ====================================================================
-const verifyAdmin = (req, res, next) => {
-  // Ambil token dari header request
-  const token = req.header('Authorization');
-  if (!token) {
-    return res.status(401).json({ message: 'Akses ditolak. Token tidak ditemukan.' });
-  }
-
-  try {
-    // Bersihkan kata "Bearer " jika frontend mengirimkannya
-    const tokenClean = token.startsWith('Bearer ') ? token.slice(7) : token;
-
-    // Verifikasi token menggunakan rahasia yang sama dengan saat login
-    const decoded = jwt.verify(tokenClean, process.env.JWT_SECRET);
-
-    // Validasi apakah user yang sedang login adalah admin dan dev
-    if (decoded.role !== 'admin' && decoded.role !== 'dev') {
-      return res.status(403).json({ message: 'Akses ditolak. Hanya Admin dan Developer yang diizinkan!' });
-    }
-
-    req.user = decoded;
-    next(); // Lolos sensor, lanjutkan ke fungsi registrasi di bawah
-  } catch (err) {
-    res.status(401).json({ message: 'Sesi tidak valid atau telah kedaluwarsa. Silakan login ulang.' });
-  }
-};
+const { requireAuth } = require('../middleware/auth');
 
 
 // ====================================================================
-// API 1: REGISTER AKUN BARU (Dilindungi Middleware verifyAdmin)
+// API 1: REGISTER AKUN BARU (Dilindungi requireAuth: admin/dev)
 // ====================================================================
-router.post('/register', verifyAdmin, async (req, res) => {
+router.post('/register', requireAuth(['admin', 'dev']), async (req, res) => {
   const { email, username, password, role } = req.body;
 
   try {
@@ -92,7 +63,7 @@ router.post('/register', verifyAdmin, async (req, res) => {
 // ====================================================================
 // API 2: TAMPILKAN SEMUA AKUN (Untuk Tabel Frontend)
 // ====================================================================
-router.get('/users', verifyAdmin, async (req, res) => {
+router.get('/users', requireAuth(['admin', 'dev']), async (req, res) => {
   try {
     // Ambil semua data akun, tapi abaikan kolom 'passwordHash'
     // Sangat penting agar password (meskipun di-hash) tidak bocor ke frontend!
@@ -111,7 +82,7 @@ router.get('/users', verifyAdmin, async (req, res) => {
 // ====================================================================
 // API 3: EDIT DATA AKUN
 // ====================================================================
-router.put('/edit/:id', verifyAdmin, async (req, res) => {
+router.put('/edit/:id', requireAuth(['admin', 'dev']), async (req, res) => {
   const { id } = req.params;
   const { email, username, role, password } = req.body;
 
@@ -169,7 +140,7 @@ router.put('/edit/:id', verifyAdmin, async (req, res) => {
 // ====================================================================
 // API 4: HAPUS AKUN
 // ====================================================================
-router.delete('/delete/:id', verifyAdmin, async (req, res) => {
+router.delete('/delete/:id', requireAuth(['admin', 'dev']), async (req, res) => {
   const { id } = req.params;
 
   try {
