@@ -3,7 +3,7 @@ const { Sequelize } = require('sequelize');
 
 // Koneksi ke database MySQL menggunakan kredensial dari .env
 const sequelize = new Sequelize(
-  process.env.DB_NAME || 'gudang_pupuk',
+  process.env.DB_NAME,
   process.env.DB_USER || 'root',
   process.env.DB_PASSWORD || '',
   {
