@@ -4,18 +4,13 @@ const { Op } = require('sequelize');
 const { ScaleReading, ScaleStatus } = require('../models');
 const { requireAuth } = require('../middleware/auth');
 
+// Import fungsi getTodayRange dari helper
+// Sesuaikan path '../utils/timeHelper' jika lokasi folder utils Anda berbeda
+const { getTodayRange } = require('../utils/timeHelper');
+
 // Endpoint GET (dashboard-summary, semua-data, detail/:id) sengaja dibiarkan
 // publik/tanpa token - DashboardView.vue memanggilnya tanpa Authorization header.
 // Hanya endpoint yang MENGUBAH data (edit/delete) yang dikunci di bawah.
-
-// Helper: rentang waktu "hari ini" (00:00:00 s/d sebelum 00:00:00 besok)
-// berdasarkan waktu lokal server (pastikan TZ server = Asia/Makassar)
-function getTodayRange() {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
-  return { startOfToday, startOfTomorrow };
-}
 
 // ====================================================================
 // 1. API: RINGKASAN DASHBOARD UTAMA
@@ -24,8 +19,6 @@ router.get('/dashboard-summary', async (req, res) => {
   try {
     const { startOfToday, startOfTomorrow } = getTodayRange();
 
-    // Semua baris di scale_readings sudah pasti data berat,
-    // jadi tidak perlu lagi filter { weight: { $exists: true } } seperti versi Mongo
     const totalSacks = await ScaleReading.count();
     const dailySacks = await ScaleReading.count({
       where: { recordedAt: { [Op.gte]: startOfToday, [Op.lt]: startOfTomorrow } },
@@ -63,10 +56,8 @@ router.get('/semua-data', async (req, res) => {
     const maxRows = Math.max(dataT1.length, dataT2.length, dataT3.length, dataT4.length);
     const finalData = [];
 
-    // Catatan: kolom weight (DECIMAL) dikembalikan mysql2 sebagai string,
-    // makanya di-Number()-kan supaya tetap angka seperti versi Mongo sebelumnya
     const mapRow = (record) => ({
-      _id: record ? record.id : null, // key '_id' dipertahankan agar frontend tidak perlu diubah
+      _id: record ? record.id : null, 
       dt: record ? record.recordedAt : '-',
       w: record ? Number(record.weight) : 0
     });
@@ -120,7 +111,6 @@ router.get('/detail/:id', async (req, res) => {
     });
     const realtime = latestRecord ? Number(latestRecord.weight) : 0;
 
-    // Status sekarang diambil dari tabel scale_status (1 baris tetap per timbangan)
     const statusRecord = await ScaleStatus.findOne({ where: { scaleId } });
     const status = statusRecord ? statusRecord.status : 'unknown';
 
@@ -160,7 +150,6 @@ router.put('/edit/:scaleId/:docId', requireAuth(['operator', 'admin', 'dev']), a
 
     const { weight, dateTime } = req.body;
 
-    // scaleId disertakan di WHERE supaya tidak bisa edit data milik timbangan lain
     const record = await ScaleReading.findOne({ where: { id: req.params.docId, scaleId } });
 
     if (!record) {
@@ -168,7 +157,6 @@ router.put('/edit/:scaleId/:docId', requireAuth(['operator', 'admin', 'dev']), a
     }
 
     if (weight !== undefined) record.weight = Number(weight);
-    // dateTime WAJIB dikirim dalam format ISO (contoh: "2026-08-04T10:30:00")
     if (dateTime !== undefined) record.recordedAt = new Date(dateTime);
 
     await record.save();
@@ -191,7 +179,6 @@ router.delete('/delete/:scaleId/:docId', requireAuth(['operator', 'admin', 'dev'
       return res.status(400).json({ message: 'Mesin timbangan tidak valid' });
     }
 
-    // scaleId disertakan di WHERE supaya tidak bisa hapus data milik timbangan lain
     const deletedCount = await ScaleReading.destroy({ where: { id: req.params.docId, scaleId } });
 
     if (deletedCount === 0) {

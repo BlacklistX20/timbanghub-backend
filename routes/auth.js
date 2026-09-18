@@ -5,6 +5,9 @@ const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const { loginLimiter } = require('../middleware/rateLimiter');
 
+// Import fungsi getCurrentTime dari timeHelper
+const { getCurrentTime } = require('../utils/timeHelper');
+
 // API LOGIN
 router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
@@ -18,16 +21,14 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ message: 'Username atau Password salah!' });
     }
 
-    // 3. Validasi Password (cocokkan input dengan passwordHash dari database)
+    // 3. Validasi Password
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return res.status(400).json({ message: 'Username atau Password salah!' });
     }
 
-    // 4. Update waktu lastLogin
-    // Gunakan objek Date asli (bukan .toString()), supaya Sequelize menyimpannya
-    // dengan benar sebagai kolom DATETIME di MySQL
-    user.lastLogin = new Date();
+    // 4. Update waktu lastLogin menggunakan waktu zona lokal
+    user.lastLogin = getCurrentTime();
     await user.save();
 
     // 5. Buat JWT Token dengan menyertakan role
