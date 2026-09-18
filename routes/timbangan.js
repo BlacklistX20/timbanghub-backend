@@ -3,10 +3,7 @@ const router = express.Router();
 const { Op } = require('sequelize');
 const { ScaleReading, ScaleStatus } = require('../models');
 const { requireAuth } = require('../middleware/auth');
-
-// Import fungsi getTodayRange dari helper
-// Sesuaikan path '../utils/timeHelper' jika lokasi folder utils Anda berbeda
-const { getTodayRange } = require('../utils/timeHelper');
+const { getTodayRange } = require('../middleware/timeHelper');
 
 // Endpoint GET (dashboard-summary, semua-data, detail/:id) sengaja dibiarkan
 // publik/tanpa token - DashboardView.vue memanggilnya tanpa Authorization header.

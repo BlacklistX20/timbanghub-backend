@@ -4,9 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const { loginLimiter } = require('../middleware/rateLimiter');
-
-// Import fungsi getCurrentTime dari timeHelper
-const { getCurrentTime } = require('../utils/timeHelper');
+const { getCurrentTime } = require('../middleware/timeHelper');
 
 // API LOGIN
 router.post('/login', loginLimiter, async (req, res) => {
